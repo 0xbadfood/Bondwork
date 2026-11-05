@@ -1,0 +1,161 @@
+// Drawing: a molecule becomes Linkwork props (lines, polylines, circles, text) in a box on a 1920×1080 stage.
+// Props are plain data in Linkwork's scene format, so Linkwork draws, animates and checks them.
+import type {Atom, Molecule, Vec} from './molecule.ts';
+
+export type Prop = {id: string; type: string; style?: Record<string, unknown>; [k: string]: unknown};
+export type DrawOptions = {
+  /** [x, y, w, h] on the stage; the molecule is centred in it. */
+  box?: [number, number, number, number];
+  /** skeletal: carbons are corners, their hydrogens unwritten; structural: every atom written. */
+  style?: 'skeletal' | 'structural';
+  /** Lone pairs as pairs of dots (Lewis structures). */
+  pairs?: boolean;
+  /** R/S at stereo centres and E/Z on double bonds. */
+  labels?: boolean;
+  /** Longest bond on screen, px. */
+  bond?: number;
+  id?: string;
+};
+
+const SUB = '₀₁₂₃₄₅₆₇₈₉';
+const sub = (n: number) => (n > 1 ? String(n).split('').map(d => SUB[Number(d)]).join('') : '');
+const sup = (q: number) => (q ? (Math.abs(q) > 1 ? String(Math.abs(q)) : '') + (q > 0 ? '⁺' : '⁻') : '');
+const add = (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1]];
+const sub2 = (a: Vec, b: Vec): Vec => [a[0] - b[0], a[1] - b[1]];
+const mul = (a: Vec, k: number): Vec => [a[0] * k, a[1] * k];
+const len = (a: Vec) => Math.hypot(a[0], a[1]);
+const unit = (a: Vec): Vec => mul(a, 1 / (len(a) || 1));
+const perp = (a: Vec): Vec => [-a[1], a[0]];
+
+/** Is this atom written as a symbol? Skeletal formulas leave neutral carbons as corners. */
+export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'): boolean {
+  const a = m.atoms[i];
+  if (style === 'structural' || a.el !== 'C') return true;
+  return a.charge !== 0 || a.radical > 0 || !m.bonds.some(b => b.a === i || b.b === i);
+}
+
+/** The symbol sits on the atom, so bonds meet it squarely; its hydrogens go beside it on the side free of bonds (OH on
+ * the right of a chain, HO on its left, H₂N below a bond that comes from both sides) and the charge at its upper right. */
+function labelProps(m: Molecule, i: number, at: Vec[], size: number, pid: string, fill: string): Prop[] {
+  const a = m.atoms[i], [x, y] = at[i], half = size * 0.36 * a.el.length, base = y + size * 0.35;
+  const out: Prop[] = [{id: pid, type: 'text', x, y: base, text: a.el, size, align: 'middle', weight: 600, style: {fill}}];
+  const side = hSide(m, i, at), text = 'H' + sub(a.h);
+  if (side?.[0] === 1) out.push({id: `${pid}-h`, type: 'text', x: x + half, y: base, text, size, align: 'start', weight: 600, style: {fill}});
+  else if (side?.[0] === -1) out.push({id: `${pid}-h`, type: 'text', x: x - half, y: base, text, size, align: 'end', weight: 600, style: {fill}});
+  else if (side) out.push({id: `${pid}-h`, type: 'text', x, y: base + side[1] * size * 1.05, text, size, align: 'middle', weight: 600, style: {fill}});
+  if (a.charge) out.push({id: `${pid}-q`, type: 'text', x: x + half + size * 0.05, y: y - size * 0.3, text: sup(a.charge).replace('⁺', '+').replace('⁻', '−'),
+    size: Math.round(size * 0.7), align: 'start', weight: 700, style: {fill}});
+  return out;
+}
+
+export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
+  const style = options.style ?? 'skeletal', id = options.id ?? 'm', [bx, by, bw, bh] = options.box ?? [160, 140, 1000, 800];
+  const xs = m.atoms.map(a => a.at[0]), ys = m.atoms.map(a => a.at[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  // RDKit lays bonds out one unit long; fit the box with room for labels, never larger than `bond` px a bond
+  const k = Math.min(options.bond ?? 130, (bw - 160) / Math.max(x1 - x0, 1e-6), (bh - 160) / Math.max(y1 - y0, 1e-6));
+  const at: Vec[] = m.atoms.map(a => [bx + bw / 2 + (a.at[0] - (x0 + x1) / 2) * k, by + bh / 2 - (a.at[1] - (y0 + y1) / 2) * k]);
+  const size = Math.round(Math.max(26, Math.min(48, k * 0.42))), width = Math.max(3, k / 22);
+  // a bond stops this far short of a written symbol (Cl is wider than O)
+  const clear = (i: number) => size * (0.5 + 0.18 * (m.atoms[i].el.length - 1));
+  const shown = m.atoms.map((_, i) => written(m, i, style));
+  const props: Prop[] = [];
+  const line = (pid: string, a: Vec, b: Vec, extra: Record<string, unknown> = {}) =>
+    props.push({id: pid, type: 'line', x1: a[0], y1: a[1], x2: b[0], y2: b[1], style: {stroke: 'ink', width, cap: 'round', ...extra}});
+  for (const [j, b] of m.bonds.entries()) {
+    const d = unit(sub2(at[b.b], at[b.a]));
+    // a bond stops short of a written symbol
+    const p = shown[b.a] ? add(at[b.a], mul(d, clear(b.a))) : at[b.a], q = shown[b.b] ? sub2(at[b.b], mul(d, clear(b.b))) : at[b.b];
+    const n = perp(d), gap = k * 0.16;
+    if (b.stereo === 'wedge') {
+      props.push({id: `${id}-b${j}`, type: 'polyline', closed: true,
+        points: [p, add(q, mul(n, k * 0.09)), sub2(q, mul(n, k * 0.09))], style: {stroke: 'ink', fill: 'ink', width: 1}});
+    } else if (b.stereo === 'dash') {
+      const steps = 6;
+      for (let s = 1; s <= steps; s++) {
+        const c = add(p, mul(sub2(q, p), s / steps)), w = k * 0.09 * s / steps;
+        line(`${id}-b${j}-${s}`, add(c, mul(n, w)), sub2(c, mul(n, w)), {width: width * 0.8});
+      }
+    } else if (b.order === 1) {
+      line(`${id}-b${j}`, p, q);
+    } else if (b.order === 3) {
+      line(`${id}-b${j}`, p, q);
+      line(`${id}-b${j}-u`, add(p, mul(n, gap)), add(q, mul(n, gap)));
+      line(`${id}-b${j}-d`, sub2(p, mul(n, gap)), sub2(q, mul(n, gap)));
+    } else {
+      const ring = m.rings.find(r => r.includes(b.a) && r.includes(b.b));
+      if (ring) {
+        // in a ring the second line runs inside, a little shorter
+        const centre = mul(ring.reduce((s, i) => add(s, at[i]), [0, 0] as Vec), 1 / ring.length);
+        const inward = Math.sign((centre[0] - at[b.a][0]) * n[0] + (centre[1] - at[b.a][1]) * n[1]) || 1;
+        const o = mul(n, inward * gap * 1.4), trim = mul(d, k * 0.14);
+        line(`${id}-b${j}`, p, q);
+        line(`${id}-b${j}-2`, add(add(p, o), shown[b.a] ? [0, 0] : trim), sub2(add(q, o), shown[b.b] ? [0, 0] : trim));
+      } else {
+        line(`${id}-b${j}`, add(p, mul(n, gap / 2)), add(q, mul(n, gap / 2)));
+        line(`${id}-b${j}-2`, sub2(p, mul(n, gap / 2)), sub2(q, mul(n, gap / 2)));
+      }
+    }
+    if (options.labels && b.cip) {
+      const mid = mul(add(at[b.a], at[b.b]), 0.5), side = n[1] < 0 ? n : mul(n, -1);
+      props.push({id: `${id}-ez${j}`, type: 'text', x: mid[0] + side[0] * k * 0.45, y: mid[1] + side[1] * k * 0.45 + size * 0.35,
+        text: `(${b.cip})`, size: Math.round(size * 0.7), align: 'middle', style: {fill: 'accent'}});
+    }
+  }
+  for (const [i, a] of m.atoms.entries()) {
+    if (shown[i]) props.push(...labelProps(m, i, at, size, `${id}-a${i}`, colour(a)));
+    if (options.pairs && a.pairs) props.push(...pairDots(m, i, at, Math.max(k * 0.36, size * 0.8), k, `${id}-p${i}`));
+    if (options.labels && a.cip) {
+      const away = freeDirections(m, i, at, 1)[0];
+      props.push({id: `${id}-cip${i}`, type: 'text', x: at[i][0] + away[0] * k * 0.5, y: at[i][1] + away[1] * k * 0.5 + size * 0.3,
+        text: a.cip, size: Math.round(size * 0.75), align: 'middle', weight: 700, style: {fill: 'accent'}});
+    }
+  }
+  return props;
+}
+
+/** Which side of a written atom its hydrogens go: right unless a bond goes right, then left, then below or above. */
+function hSide(m: Molecule, i: number, at: Vec[]): Vec | null {
+  if (!m.atoms[i].h) return null;
+  const nb = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
+  const free = (v: Vec) => !nb.some(u => (u[0] * v[0] + u[1] * v[1]) > 0.3 * len(u));
+  return ([[1, 0], [-1, 0], [0, 1], [0, -1]] as Vec[]).find(free) ?? [1, 0];
+}
+
+/** Heteroatoms in their usual colours; carbon and hydrogen in ink. */
+function colour(a: Atom): string {
+  return ({O: '#ff7a6b', N: '#7fb2ff', S: '#f2d35b', Cl: '#7fd67f', F: '#9fe2a0', Br: '#d08a5a', I: '#c39bff', P: '#ffa64d'} as Record<string, string>)[a.el] ?? 'ink';
+}
+
+/** Directions (screen, unit) into the widest gaps between an atom's bonds, `n` of them. */
+function freeDirections(m: Molecule, i: number, at: Vec[], n: number): Vec[] {
+  // the bonds, and the written hydrogens, take their directions; lone pairs go into what is left
+  const taken = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
+  const h = written(m, i, 'structural') ? hSide(m, i, at) : null;
+  if (h) taken.push(h);
+  if (m.atoms[i].charge) taken.push([0.8, -0.6]);
+  const angles = taken.map(v => Math.atan2(v[1], v[0])).sort((x, y) => x - y);
+  if (!angles.length) return Array.from({length: n}, (_, j) => [Math.cos(-Math.PI / 2 + (2 * Math.PI * j) / n), Math.sin(-Math.PI / 2 + (2 * Math.PI * j) / n)] as Vec);
+  // split each gap between neighbouring bonds by how many items it takes, the widest gaps first
+  const gaps = angles.map((a, j) => ({from: a, size: (j + 1 < angles.length ? angles[j + 1] : angles[0] + 2 * Math.PI) - a, take: 0}));
+  for (let j = 0; j < n; j++) gaps.reduce((w, g) => (g.size / (g.take + 1) > w.size / (w.take + 1) ? g : w)).take++;
+  return gaps.flatMap(g => Array.from({length: g.take}, (_, j) => {
+    const t = g.from + (g.size * (j + 1)) / (g.take + 1);
+    return [Math.cos(t), Math.sin(t)] as Vec;
+  }));
+}
+
+function pairDots(m: Molecule, i: number, at: Vec[], reach: number, k: number, pid: string): Prop[] {
+  return freeDirections(m, i, at, m.atoms[i].pairs).flatMap((d, j) => {
+    const c = add(at[i], mul(d, reach)), side = mul(perp(d), k * 0.07);
+    return [add(c, side), sub2(c, side)].map((p, s) => ({id: `${pid}-${j}-${s}`, type: 'circle', x: p[0], y: p[1], r: Math.max(3, k * 0.035),
+      style: {fill: 'ink'}}));
+  });
+}
+
+/** A still Linkwork scene of one molecule (1920×1080), for previews and tests. */
+export function moleculeScene(m: Molecule, options: DrawOptions & {title?: string; duration?: number} = {}) {
+  const props = moleculeProps(m, options);
+  if (options.title) props.push({id: 'title', type: 'text', x: 1260, y: 160, text: options.title, size: 44, weight: 700, width: 560});
+  return {linkwork: 1 as const, width: 1920, height: 1080, fps: 30, duration: options.duration ?? 3, theme: 'dark' as const, props, actors: []};
+}

@@ -7,9 +7,21 @@ and moves the atoms from one step to the next. Nothing is drawn by hand and noth
 Bondwork is the sibling of [Linkwork](https://github.com/0xbadfood/Linkwork): Linkwork moves links and joints,
 Bondwork moves atoms and bonds. Its scenes use Linkwork's scene format, renderer and legibility checks.
 
+## Use
+
+```ts
+import {molecule, moleculeErrors, moleculeScene} from 'bondwork';
+const m = molecule('N[C@@H](C)C(=O)O');           // L-alanine: formula C3H7NO2, its centre (S), lone pairs on N and O
+moleculeErrors(m, {formula: 'C3H7NO2'});           // [] — or what is wrong, in words
+const scene = moleculeScene(m, {style: 'skeletal', labels: true});   // a Linkwork scene
+```
+
+`node scripts/preview.ts out/ 'SMILES|style|title|flags'` draws molecules to SVG through a Linkwork checkout beside
+this one (flags: H every hydrogen an atom, P lone pairs, L R/S and E/Z).
+
 ## Plan
 
-1. **Molecule core.** A molecular graph (atoms, bonds, lone pairs, charges), layout in 2D and 3D, and guards: atoms
+1. **Molecule core** (started). A molecular graph (atoms, bonds, lone pairs, charges), layout in 2D and 3D, and guards: atoms
    match the formula, every valence is right, formal charges add up. Drawn skeletal, condensed, full structural, or
    ball-and-stick; wedges, dashes, Newman, sawhorse, chair and Fischer projections.
 2. **Named index.** Every molecule a course uses, with names, aliases, formula, SMILES, class and cached coordinates,
