@@ -73,3 +73,30 @@ test('drawn scenes pass Linkwork\'s checks: nothing off stage, no text on text',
     assert.deepEqual(lw.check(scene), [], s);
   }
 });
+
+test('atom colours: CPK by element, each bond half and half, mono and own colours on request', async () => {
+  const {atomColour} = await import('../src/index.ts');
+  assert.equal(atomColour('O'), '#ff7a6b');
+  assert.equal(atomColour('O', 'element', 'light'), '#d23a2a');
+  assert.equal(atomColour('C'), 'ink');
+  assert.equal(atomColour('O', 'mono'), 'ink');
+  assert.equal(atomColour('O', {O: 'accent'}), 'accent');
+  assert.equal(atomColour('N', {O: 'accent'}), '#7fb2ff');
+  const props = moleculeProps(molecule('CO'), {style: 'skeletal'});
+  const halves = props.filter(p => p.type === 'line').map(p => (p.style as {stroke: string}).stroke);
+  assert.deepEqual(halves, ['ink', '#ff7a6b'], 'C–O: the carbon half in ink, the oxygen half red');
+  assert.equal(props.find(p => p.text === 'O')!.style!.fill, '#ff7a6b');
+  const mono = moleculeProps(molecule('CO'), {colours: 'mono'});
+  assert.equal(mono.filter(p => p.type === 'line').length, 1);
+  const lit = moleculeProps(molecule('CCO'), {highlight: {1: 'accent'}});
+  assert.ok(lit.some(p => p.type === 'line' && (p.style as {stroke: string}).stroke === 'accent'));
+});
+
+test('a symbol sits centred on its atom (Linkwork centres text on y)', () => {
+  const m = molecule('CO'), props = moleculeProps(m, {style: 'structural'});
+  const [c, o] = ['C', 'O'].map(s => props.find(p => p.text === s)!);
+  const bond = props.find(p => p.type === 'line')!;
+  // the bond runs along the line between the two symbols' centres
+  const cross = ((bond.x2 as number) - (bond.x1 as number)) * ((o.y as number) - (c.y as number)) - ((bond.y2 as number) - (bond.y1 as number)) * ((o.x as number) - (c.x as number));
+  assert.ok(Math.abs(cross) < 1e-6 * 1e4, String(cross));
+});

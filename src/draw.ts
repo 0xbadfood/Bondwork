@@ -1,6 +1,7 @@
 // Drawing: a molecule becomes Linkwork props (lines, polylines, circles, text) in a box on a 1920×1080 stage.
 // Props are plain data in Linkwork's scene format, so Linkwork draws, animates and checks them.
-import type {Atom, Molecule, Vec} from './molecule.ts';
+import {atomColour, type Colours} from './colours.ts';
+import type {Molecule, Vec} from './molecule.ts';
 
 export type Prop = {id: string; type: string; style?: Record<string, unknown>; [k: string]: unknown};
 export type DrawOptions = {
@@ -12,6 +13,13 @@ export type DrawOptions = {
   pairs?: boolean;
   /** R/S at stereo centres and E/Z on double bonds. */
   labels?: boolean;
+  /** Atom colours: 'element' (CPK, the default), 'mono', or your own by element. Each bond takes its two atoms'
+   * colours half and half. */
+  colours?: Colours;
+  /** Picks the CPK shades that read on the stage's paper. */
+  theme?: 'dark' | 'light';
+  /** Atoms picked out in a colour of their own, by index: the atom a step acts on, a stereo centre. */
+  highlight?: Record<number, string>;
   /** Longest bond on screen, px. */
   bond?: number;
   id?: string;
@@ -37,13 +45,13 @@ export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'
 /** The symbol sits on the atom, so bonds meet it squarely; its hydrogens go beside it on the side free of bonds (OH on
  * the right of a chain, HO on its left, H₂N below a bond that comes from both sides) and the charge at its upper right. */
 function labelProps(m: Molecule, i: number, at: Vec[], size: number, pid: string, fill: string): Prop[] {
-  const a = m.atoms[i], [x, y] = at[i], half = size * 0.36 * a.el.length, base = y + size * 0.35;
+  const a = m.atoms[i], [x, y] = at[i], half = size * 0.36 * a.el.length, base = y;   // Linkwork centres text on its y
   const out: Prop[] = [{id: pid, type: 'text', x, y: base, text: a.el, size, align: 'middle', weight: 600, style: {fill}}];
   const side = hSide(m, i, at), text = 'H' + sub(a.h);
   if (side?.[0] === 1) out.push({id: `${pid}-h`, type: 'text', x: x + half, y: base, text, size, align: 'start', weight: 600, style: {fill}});
   else if (side?.[0] === -1) out.push({id: `${pid}-h`, type: 'text', x: x - half, y: base, text, size, align: 'end', weight: 600, style: {fill}});
   else if (side) out.push({id: `${pid}-h`, type: 'text', x, y: base + side[1] * size * 1.05, text, size, align: 'middle', weight: 600, style: {fill}});
-  if (a.charge) out.push({id: `${pid}-q`, type: 'text', x: x + half + size * 0.05, y: y - size * 0.3, text: sup(a.charge).replace('⁺', '+').replace('⁻', '−'),
+  if (a.charge) out.push({id: `${pid}-q`, type: 'text', x: x + half + size * 0.05, y: y - size * 0.45, text: sup(a.charge).replace('⁺', '+').replace('⁻', '−'),
     size: Math.round(size * 0.7), align: 'start', weight: 700, style: {fill}});
   return out;
 }
@@ -60,19 +68,31 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
   const clear = (i: number) => size * (0.5 + 0.18 * (m.atoms[i].el.length - 1));
   const shown = m.atoms.map((_, i) => written(m, i, style));
   const props: Prop[] = [];
-  const line = (pid: string, a: Vec, b: Vec, extra: Record<string, unknown> = {}) =>
-    props.push({id: pid, type: 'line', x1: a[0], y1: a[1], x2: b[0], y2: b[1], style: {stroke: 'ink', width, cap: 'round', ...extra}});
+  const fill = m.atoms.map((a, i) => options.highlight?.[i] ?? atomColour(a.el, options.colours, options.theme));
+  // a bond line in its two atoms' colours, meeting at the bond's middle (one line when they match)
+  let ca = 'ink', cb = 'ink';
+  const line = (pid: string, a: Vec, b: Vec, extra: Record<string, unknown> = {}) => {
+    const piece = (id2: string, u: Vec, v: Vec, stroke: string) =>
+      props.push({id: id2, type: 'line', x1: u[0], y1: u[1], x2: v[0], y2: v[1], style: {stroke, width, cap: 'round', ...extra}});
+    if (ca === cb) return piece(pid, a, b, ca);
+    const mid = mul(add(a, b), 0.5);
+    piece(pid, a, mid, ca);
+    piece(`${pid}-half`, mid, b, cb);
+  };
   for (const [j, b] of m.bonds.entries()) {
+    [ca, cb] = [fill[b.a], fill[b.b]];
     const d = unit(sub2(at[b.b], at[b.a]));
     // a bond stops short of a written symbol
     const p = shown[b.a] ? add(at[b.a], mul(d, clear(b.a))) : at[b.a], q = shown[b.b] ? sub2(at[b.b], mul(d, clear(b.b))) : at[b.b];
     const n = perp(d), gap = k * 0.16;
     if (b.stereo === 'wedge') {
       props.push({id: `${id}-b${j}`, type: 'polyline', closed: true,
-        points: [p, add(q, mul(n, k * 0.09)), sub2(q, mul(n, k * 0.09))], style: {stroke: 'ink', fill: 'ink', width: 1}});
+        points: [p, add(q, mul(n, k * 0.09)), sub2(q, mul(n, k * 0.09))], style: {stroke: ca, fill: ca, width: 1}});
     } else if (b.stereo === 'dash') {
-      const steps = 6;
+      const steps = 6, [from, to] = [ca, cb];
       for (let s = 1; s <= steps; s++) {
+        // each hash is one colour: the near atom's for the first half, the far atom's after
+        ca = cb = s <= steps / 2 ? from : to;
         const c = add(p, mul(sub2(q, p), s / steps)), w = k * 0.09 * s / steps;
         line(`${id}-b${j}-${s}`, add(c, mul(n, w)), sub2(c, mul(n, w)), {width: width * 0.8});
       }
@@ -98,16 +118,16 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
     }
     if (options.labels && b.cip) {
       const mid = mul(add(at[b.a], at[b.b]), 0.5), side = n[1] < 0 ? n : mul(n, -1);
-      props.push({id: `${id}-ez${j}`, type: 'text', x: mid[0] + side[0] * k * 0.45, y: mid[1] + side[1] * k * 0.45 + size * 0.35,
+      props.push({id: `${id}-ez${j}`, type: 'text', x: mid[0] + side[0] * k * 0.45, y: mid[1] + side[1] * k * 0.45,
         text: `(${b.cip})`, size: Math.round(size * 0.7), align: 'middle', style: {fill: 'accent'}});
     }
   }
   for (const [i, a] of m.atoms.entries()) {
-    if (shown[i]) props.push(...labelProps(m, i, at, size, `${id}-a${i}`, colour(a)));
-    if (options.pairs && a.pairs) props.push(...pairDots(m, i, at, Math.max(k * 0.36, size * 0.8), k, `${id}-p${i}`));
+    if (shown[i]) props.push(...labelProps(m, i, at, size, `${id}-a${i}`, fill[i]));
+    if (options.pairs && a.pairs) props.push(...pairDots(m, i, at, Math.max(k * 0.36, size * 0.8), k, `${id}-p${i}`, fill[i]));
     if (options.labels && a.cip) {
       const away = freeDirections(m, i, at, 1)[0];
-      props.push({id: `${id}-cip${i}`, type: 'text', x: at[i][0] + away[0] * k * 0.5, y: at[i][1] + away[1] * k * 0.5 + size * 0.3,
+      props.push({id: `${id}-cip${i}`, type: 'text', x: at[i][0] + away[0] * k * 0.5, y: at[i][1] + away[1] * k * 0.5,
         text: a.cip, size: Math.round(size * 0.75), align: 'middle', weight: 700, style: {fill: 'accent'}});
     }
   }
@@ -120,11 +140,6 @@ function hSide(m: Molecule, i: number, at: Vec[]): Vec | null {
   const nb = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
   const free = (v: Vec) => !nb.some(u => (u[0] * v[0] + u[1] * v[1]) > 0.3 * len(u));
   return ([[1, 0], [-1, 0], [0, 1], [0, -1]] as Vec[]).find(free) ?? [1, 0];
-}
-
-/** Heteroatoms in their usual colours; carbon and hydrogen in ink. */
-function colour(a: Atom): string {
-  return ({O: '#ff7a6b', N: '#7fb2ff', S: '#f2d35b', Cl: '#7fd67f', F: '#9fe2a0', Br: '#d08a5a', I: '#c39bff', P: '#ffa64d'} as Record<string, string>)[a.el] ?? 'ink';
 }
 
 /** Directions (screen, unit) into the widest gaps between an atom's bonds, `n` of them. */
@@ -145,11 +160,11 @@ function freeDirections(m: Molecule, i: number, at: Vec[], n: number): Vec[] {
   }));
 }
 
-function pairDots(m: Molecule, i: number, at: Vec[], reach: number, k: number, pid: string): Prop[] {
+function pairDots(m: Molecule, i: number, at: Vec[], reach: number, k: number, pid: string, fill: string): Prop[] {
   return freeDirections(m, i, at, m.atoms[i].pairs).flatMap((d, j) => {
     const c = add(at[i], mul(d, reach)), side = mul(perp(d), k * 0.07);
     return [add(c, side), sub2(c, side)].map((p, s) => ({id: `${pid}-${j}-${s}`, type: 'circle', x: p[0], y: p[1], r: Math.max(3, k * 0.035),
-      style: {fill: 'ink'}}));
+      style: {fill}}));
   });
 }
 
@@ -157,5 +172,5 @@ function pairDots(m: Molecule, i: number, at: Vec[], reach: number, k: number, p
 export function moleculeScene(m: Molecule, options: DrawOptions & {title?: string; duration?: number} = {}) {
   const props = moleculeProps(m, options);
   if (options.title) props.push({id: 'title', type: 'text', x: 1260, y: 160, text: options.title, size: 44, weight: 700, width: 560});
-  return {linkwork: 1 as const, width: 1920, height: 1080, fps: 30, duration: options.duration ?? 3, theme: 'dark' as const, props, actors: []};
+  return {linkwork: 1 as const, width: 1920, height: 1080, fps: 30, duration: options.duration ?? 3, theme: options.theme ?? 'dark', props, actors: []};
 }
