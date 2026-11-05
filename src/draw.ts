@@ -57,7 +57,8 @@ function chargeDirection(m: Molecule, i: number, at: Vec[]): Vec {
   if (h) taken.push(h);
   const corners: Vec[] = [[0.8, -0.6], [-0.8, -0.6], [0.8, 0.6], [-0.8, 0.6]];
   const clearance = (c: Vec) => Math.min(2, ...taken.map(v => 1 - (v[0] * c[0] + v[1] * c[1])));
-  return corners.reduce((best, c) => (clearance(c) > clearance(best) + 0.05 ? c : best));
+  // an upper corner whenever one is clear of bonds by about 100°: a sign low on the right reads as an underscore
+  return corners.find(c => clearance(c) >= 1.2) ?? corners.reduce((best, c) => (clearance(c) > clearance(best) + 0.05 ? c : best));
 }
 
 /** The symbol sits on the atom, so bonds meet it squarely; its hydrogens go beside it on the side free of bonds (OH on

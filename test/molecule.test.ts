@@ -141,4 +141,7 @@ test('skeletal formulas write the carbons a corner cannot show; radicals show th
   const props = moleculeProps(molecule('[C-]#[O+]'), {style: 'skeletal'});
   const bond = props.find(p => p.type === 'line')!, y = bond.y1 as number;
   for (const q of props.filter(p => String(p.id).endsWith('-q'))) assert.ok(Math.abs((q.y as number) - y) > 10, `${q.text} sits on the bond`);
+  // acetate's O−: the sign goes high, not low on the right where it reads as O_
+  const acetate = moleculeProps(molecule('CC(=O)[O-]')), o = acetate.find(p => p.text === 'O' && acetate.some(q => q.id === `${p.id}-q`))!;
+  assert.ok((acetate.find(q => q.id === `${o.id}-q`)!.y as number) < (o.y as number), 'charge above the middle of the symbol');
 });
