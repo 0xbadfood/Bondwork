@@ -124,3 +124,46 @@ export function hill(text: string): string {
   const q = charge ? (charge[2] === '+' ? 1 : -1) * (charge[1] ? Number(charge[1]) : 1) : 0;
   return formula(atoms, q);
 }
+
+const METALS = new Set(['Li', 'Be', 'Na', 'Mg', 'Al', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+  'Ga', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Cs', 'Ba', 'Pt', 'Au', 'Hg', 'Pb']);
+/** IUPAC's element sequence for writing formulas (Red Book IR-4.4): the earlier element is written first. */
+const SEQUENCE = ['Rn', 'Xe', 'Kr', 'Ar', 'Ne', 'He', 'B', 'Si', 'C', 'Sb', 'As', 'P', 'N', 'H', 'Te', 'Se', 'S', 'At', 'I',
+  'Br', 'Cl', 'O', 'F'];
+
+/** The formula as a schoolbook writes it. Organic molecules (a C–C or C–H bond) in Hill order, C2H6O. Others metals
+ * first, then the IUPAC sequence (NH3, CO2, SO4 2-), with an acid's hydrogens in front (H2SO4, HNO3, NaHCO3) and
+ * hydroxide groups last (NaOH, Ca(OH)2, OH-). The charge follows, as in `formula`. */
+export function formulaText(m: Molecule): string {
+  const hOn = (i: number) => m.atoms[i].h + m.bonds.filter(b => (b.a === i && m.atoms[b.b].el === 'H') || (b.b === i && m.atoms[b.a].el === 'H')).length;
+  const others = (i: number) => m.bonds.filter(b => b.a === i || b.b === i).map(b => (b.a === i ? b.b : b.a)).filter(j => m.atoms[j].el !== 'H');
+  const organic = m.atoms.some((a, i) => a.el === 'C' && (hOn(i) > 0 || others(i).some(j => m.atoms[j].el === 'C')));
+  if (organic) return m.formula;
+  const n: Record<string, number> = {};
+  let hydroxide = 0, acidic = 0;
+  for (const [i, a] of m.atoms.entries()) {
+    if (a.el === 'H') continue;                      // counted on the atom it is bonded to
+    const h = hOn(i), nb = others(i);
+    if (a.el === 'O' && h === 1 && nb.every(j => METALS.has(m.atoms[j].el)) && (nb.length || m.atoms.some(x => METALS.has(x.el)) || a.charge < 0)) { hydroxide++; continue; }
+    n[a.el] = (n[a.el] ?? 0) + 1;
+    if (h) { if (a.el === 'O') acidic += h; else n.H = (n.H ?? 0) + h; }
+  }
+  if (!Object.keys(n).length && hydroxide === 0) n.H = m.atoms.length;   // H2
+  const rank = (e: string) => (METALS.has(e) ? -1 : SEQUENCE.indexOf(e) < 0 ? SEQUENCE.length : SEQUENCE.indexOf(e));
+  const order = Object.keys(n).sort((x, y) => rank(x) - rank(y) || x.localeCompare(y));
+  const part = (e: string, k: number) => e + (k > 1 ? k : '');
+  const metals = order.filter(e => METALS.has(e)), rest = order.filter(e => !METALS.has(e));
+  let text = metals.map(e => part(e, n[e])).join('') + (acidic ? part('H', acidic) : '') + rest.map(e => part(e, n[e])).join('');
+  if (hydroxide) text += hydroxide > 1 ? `(OH)${hydroxide}` : 'OH';
+  const q = m.charge;
+  return text + (q ? `${Math.abs(q) > 1 ? Math.abs(q) : ''}${q > 0 ? '+' : '-'}` : '');
+}
+
+/** A formula with subscript counts and a superscript charge: H2SO4 → H₂SO₄, SO42- (from formulaText) → SO₄²⁻. */
+export function pretty(text: string, charge = 0): string {
+  const SUB = '₀₁₂₃₄₅₆₇₈₉', SUP: Record<string, string> = {0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹', '+': '⁺', '-': '⁻'};
+  // the charge is known, so its digits are told apart from the last count (SO42- is SO4 with 2-)
+  const q = charge ? `${Math.abs(charge) > 1 ? Math.abs(charge) : ''}${charge > 0 ? '+' : '-'}` : '';
+  const body = q && text.endsWith(q) ? text.slice(0, -q.length) : text;
+  return body.replace(/[0-9]/g, d => SUB[Number(d)]) + q.split('').map(c => SUP[c]).join('');
+}

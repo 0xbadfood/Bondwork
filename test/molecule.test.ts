@@ -100,3 +100,15 @@ test('a symbol sits centred on its atom (Linkwork centres text on y)', () => {
   const cross = ((bond.x2 as number) - (bond.x1 as number)) * ((o.y as number) - (c.y as number)) - ((bond.y2 as number) - (bond.y1 as number)) * ((o.x as number) - (c.x as number));
   assert.ok(Math.abs(cross) < 1e-6 * 1e4, String(cross));
 });
+
+test('formulas as a schoolbook writes them: acids H first, hydroxides last, organics in Hill order', async () => {
+  const {formulaText, pretty} = await import('../src/index.ts');
+  const cases: [string, string][] = [['OS(=O)(=O)O', 'H2SO4'], ['O[N+](=O)[O-]', 'HNO3'], ['N', 'NH3'], ['[NH4+]', 'NH4+'],
+    ['O', 'H2O'], ['[Na+].[Cl-]', 'NaCl'], ['[Ca+2].[O-]C([O-])=O', 'CaCO3'], ['O=C=O', 'CO2'], ['[Na+].[OH-]', 'NaOH'],
+    ['[Ca+2].[OH-].[OH-]', 'Ca(OH)2'], ['[OH-]', 'OH-'], ['OP(O)(O)=O', 'H3PO4'], ['[O-]S(=O)(=O)[O-]', 'SO42-'], ['Cl', 'HCl'],
+    ['[Na+].OC([O-])=O', 'NaHCO3'], ['C', 'CH4'], ['CCO', 'C2H6O'], ['[H][H]', 'H2'], ['OO', 'H2O2'], ['[NH4+].[Cl-]', 'NH4Cl']];
+  for (const [s, want] of cases) assert.equal(formulaText(molecule(s)), want, s);
+  assert.equal(pretty('H2SO4'), 'H₂SO₄');
+  assert.equal(pretty('SO42-', -2), 'SO₄²⁻');
+  assert.equal(pretty('NH4+', 1), 'NH₄⁺');
+});

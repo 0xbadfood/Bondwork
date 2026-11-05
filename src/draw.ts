@@ -35,6 +35,9 @@ const len = (a: Vec) => Math.hypot(a[0], a[1]);
 const unit = (a: Vec): Vec => mul(a, 1 / (len(a) || 1));
 const perp = (a: Vec): Vec => [-a[1], a[0]];
 
+/** Half a symbol's width in bold sans: O and C are round and wide, Cl is two letters (0.42 em, 0.5 em). */
+const halfWidth = (el: string, size: number) => size * (0.42 + 0.08 * (el.length - 1));
+
 /** Is this atom written as a symbol? Skeletal formulas leave neutral carbons as corners. */
 export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'): boolean {
   const a = m.atoms[i];
@@ -45,7 +48,7 @@ export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'
 /** The symbol sits on the atom, so bonds meet it squarely; its hydrogens go beside it on the side free of bonds (OH on
  * the right of a chain, HO on its left, H₂N below a bond that comes from both sides) and the charge at its upper right. */
 function labelProps(m: Molecule, i: number, at: Vec[], size: number, pid: string, fill: string): Prop[] {
-  const a = m.atoms[i], [x, y] = at[i], half = size * 0.36 * a.el.length, base = y;   // Linkwork centres text on its y
+  const a = m.atoms[i], [x, y] = at[i], half = halfWidth(a.el, size), base = y;   // Linkwork centres text on its y
   const out: Prop[] = [{id: pid, type: 'text', x, y: base, text: a.el, size, align: 'middle', weight: 600, style: {fill}}];
   const side = hSide(m, i, at), text = 'H' + sub(a.h);
   if (side?.[0] === 1) out.push({id: `${pid}-h`, type: 'text', x: x + half, y: base, text, size, align: 'start', weight: 600, style: {fill}});
@@ -64,8 +67,16 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
   const k = Math.min(options.bond ?? 130, (bw - 160) / Math.max(x1 - x0, 1e-6), (bh - 160) / Math.max(y1 - y0, 1e-6));
   const at: Vec[] = m.atoms.map(a => [bx + bw / 2 + (a.at[0] - (x0 + x1) / 2) * k, by + bh / 2 - (a.at[1] - (y0 + y1) / 2) * k]);
   const size = Math.round(Math.max(26, Math.min(48, k * 0.42))), width = Math.max(3, k / 22);
-  // a bond stops this far short of a written symbol (Cl is wider than O)
-  const clear = (i: number) => size * (0.5 + 0.18 * (m.atoms[i].el.length - 1));
+  // a written symbol's box (Cl is wider than O): every bond line stops where it leaves it, so lines running side by
+  // side (double and triple bonds) and bonds at any angle clear the letters alike
+  const pad = size * 0.14, box = (i: number): Vec => [halfWidth(m.atoms[i].el, size) + pad, size * 0.4 + pad];
+  const exit = (i: number, start: Vec, dir: Vec): number => {
+    const [w, h] = box(i), t: number[] = [];
+    if (Math.abs(start[0]) >= w || Math.abs(start[1]) >= h) return 0;
+    if (dir[0]) t.push((Math.sign(dir[0]) * w - start[0]) / dir[0]);
+    if (dir[1]) t.push((Math.sign(dir[1]) * h - start[1]) / dir[1]);
+    return Math.max(0, Math.min(...t));
+  };
   const shown = m.atoms.map((_, i) => written(m, i, style));
   const props: Prop[] = [];
   const fill = m.atoms.map((a, i) => options.highlight?.[i] ?? atomColour(a.el, options.colours, options.theme));
@@ -82,8 +93,11 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
   for (const [j, b] of m.bonds.entries()) {
     [ca, cb] = [fill[b.a], fill[b.b]];
     const d = unit(sub2(at[b.b], at[b.a]));
-    // a bond stops short of a written symbol
-    const p = shown[b.a] ? add(at[b.a], mul(d, clear(b.a))) : at[b.a], q = shown[b.b] ? sub2(at[b.b], mul(d, clear(b.b))) : at[b.b];
+    // a line of this bond, `o` off its axis, from where it leaves atom a's symbol to where it meets atom b's
+    const ends = (o: Vec): [Vec, Vec] => [
+      add(add(at[b.a], o), mul(d, shown[b.a] ? exit(b.a, o, d) : 0)),
+      sub2(add(at[b.b], o), mul(d, shown[b.b] ? exit(b.b, o, mul(d, -1)) : 0))];
+    const [p, q] = ends([0, 0]);
     const n = perp(d), gap = k * 0.16;
     if (b.stereo === 'wedge') {
       props.push({id: `${id}-b${j}`, type: 'polyline', closed: true,
@@ -100,8 +114,8 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
       line(`${id}-b${j}`, p, q);
     } else if (b.order === 3) {
       line(`${id}-b${j}`, p, q);
-      line(`${id}-b${j}-u`, add(p, mul(n, gap)), add(q, mul(n, gap)));
-      line(`${id}-b${j}-d`, sub2(p, mul(n, gap)), sub2(q, mul(n, gap)));
+      line(`${id}-b${j}-u`, ...ends(mul(n, gap)));
+      line(`${id}-b${j}-d`, ...ends(mul(n, -gap)));
     } else {
       const ring = m.rings.find(r => r.includes(b.a) && r.includes(b.b));
       if (ring) {
@@ -110,10 +124,11 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
         const inward = Math.sign((centre[0] - at[b.a][0]) * n[0] + (centre[1] - at[b.a][1]) * n[1]) || 1;
         const o = mul(n, inward * gap * 1.4), trim = mul(d, k * 0.14);
         line(`${id}-b${j}`, p, q);
-        line(`${id}-b${j}-2`, add(add(p, o), shown[b.a] ? [0, 0] : trim), sub2(add(q, o), shown[b.b] ? [0, 0] : trim));
+        const [p2, q2] = ends(o);
+        line(`${id}-b${j}-2`, shown[b.a] ? p2 : add(p2, trim), shown[b.b] ? q2 : sub2(q2, trim));
       } else {
-        line(`${id}-b${j}`, add(p, mul(n, gap / 2)), add(q, mul(n, gap / 2)));
-        line(`${id}-b${j}-2`, sub2(p, mul(n, gap / 2)), sub2(q, mul(n, gap / 2)));
+        line(`${id}-b${j}`, ...ends(mul(n, gap / 2)));
+        line(`${id}-b${j}-2`, ...ends(mul(n, -gap / 2)));
       }
     }
     if (options.labels && b.cip) {
