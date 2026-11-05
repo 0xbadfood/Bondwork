@@ -113,14 +113,36 @@ export function moleculeErrors(m: Molecule, expect: {formula?: string; charge?: 
   return out;
 }
 
+/** Element counts of a condensed formula: groups in brackets with their multiplier, bond marks ignored
+ * ((CH3)3C-OH, CH2=CH2, [Co(NH3)6]Cl3, CuSO4·5H2O). */
+function counts(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  const [main, ...hydrates] = text.replace(/[-=≡–—]/g, '').split(/[·.*]/);
+  const stack: Record<string, number>[] = [{}];
+  for (const m of main.matchAll(/([A-Z][a-z]?)([0-9]*)|([([])|([)\]])([0-9]*)/g)) {
+    const [el, open, close, k] = [m[1], m[3], m[4], m[2] || m[5]];
+    if (open) stack.push({});
+    else if (close) {
+      const group = stack.pop()!, top = stack[stack.length - 1];
+      for (const [e, n] of Object.entries(group)) top[e] = (top[e] ?? 0) + n * (k ? Number(k) : 1);
+    } else if (el) stack[stack.length - 1][el] = (stack[stack.length - 1][el] ?? 0) + (k ? Number(k) : 1);
+  }
+  for (const [e, n] of Object.entries(stack[0])) out[e] = (out[e] ?? 0) + n;
+  for (const h of hydrates) {
+    const [, times, rest] = /^([0-9]*)(.*)$/.exec(h)!;
+    for (const [e, n] of Object.entries(counts(rest))) out[e] = (out[e] ?? 0) + n * (times ? Number(times) : 1);
+  }
+  return out;
+}
+
 /** A formula as written (CH3CH2OH, C2H6O, SO4^2-, NH4+) in Hill order, so two spellings of one formula compare
  * equal. A charge of more than one is written after ^ (SO42- could be O42). */
 export function hill(text: string): string {
   const [body, written] = text.includes('^') ? text.split('^') : [text.replace(/[+-]$/, ''), /[+-]$/.exec(text)?.[0] ?? ''];
   const charge = /^([0-9]*)([+-])$/.exec(written);
   const atoms: Atom[] = [];
-  for (const [, el, k] of body.matchAll(/([A-Z][a-z]?)([0-9]*)/g))
-    for (let i = 0; i < (k ? Number(k) : 1); i++) atoms.push({el, charge: 0, h: 0, pairs: 0, radical: 0, at: [0, 0]});
+  for (const [el, k] of Object.entries(counts(body)))
+    for (let i = 0; i < k; i++) atoms.push({el, charge: 0, h: 0, pairs: 0, radical: 0, at: [0, 0]});
   const q = charge ? (charge[2] === '+' ? 1 : -1) * (charge[1] ? Number(charge[1]) : 1) : 0;
   return formula(atoms, q);
 }

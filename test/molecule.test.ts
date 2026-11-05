@@ -112,3 +112,12 @@ test('formulas as a schoolbook writes them: acids H first, hydroxides last, orga
   assert.equal(pretty('SO42-', -2), 'SO₄²⁻');
   assert.equal(pretty('NH4+', 1), 'NH₄⁺');
 });
+
+test('condensed formulas as books print them', () => {
+  assert.equal(hill('(CH3)3C-OH'), 'C4H10O');
+  assert.equal(hill('CH2=CH2'), 'C2H4');
+  assert.equal(hill('CH3COOH'), 'C2H4O2');
+  assert.equal(hill('[Co(NH3)6]Cl3'), 'Cl3CoH18N6');
+  assert.equal(hill('CuSO4·5H2O'), 'CuH10O9S');
+  assert.equal(hill('CH≡CH'), 'C2H2');
+});
