@@ -1,0 +1,11 @@
+{
+  "name": "bondwork",
+  "version": "0.1.0",
+  "description": "Molecules and reaction mechanisms from plain data: structures from formulas and names, isomers, curly-arrow steps checked by rule, atoms that move.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {".": "./src/index.ts"},
+  "engines": {"node": ">=23.6"},
+  "scripts": {"test": "node --test test/*.test.ts", "typecheck": "tsc --noEmit"},
+  "devDependencies": {"typescript": "5.9.2", "@types/node": "24.3.0"}
+}
