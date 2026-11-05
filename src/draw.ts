@@ -1,7 +1,7 @@
 // Drawing: a molecule becomes Linkwork props (lines, polylines, circles, text) in a box on a 1920×1080 stage.
 // Props are plain data in Linkwork's scene format, so Linkwork draws, animates and checks them.
 import {atomColour, type Colours} from './colours.ts';
-import type {Molecule, Vec} from './molecule.ts';
+import {VALENCE, type Molecule, type Vec} from './molecule.ts';
 
 export type Prop = {id: string; type: string; style?: Record<string, unknown>; [k: string]: unknown};
 export type DrawOptions = {
@@ -38,11 +38,26 @@ const perp = (a: Vec): Vec => [-a[1], a[0]];
 /** Half a symbol's width in bold sans: O and C are round and wide, Cl is two letters (0.42 em, 0.5 em). */
 const halfWidth = (el: string, size: number) => size * (0.42 + 0.08 * (el.length - 1));
 
-/** Is this atom written as a symbol? Skeletal formulas leave neutral carbons as corners. */
+/** Is this atom written as a symbol? Skeletal formulas leave a neutral carbon as a corner when it has a carbon
+ * neighbour; one with none is written (H₃C–Br, O=C=O, H₃C–O–CH₃), and so is the middle carbon of C=C=C, which a
+ * corner cannot show. */
 export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'): boolean {
   const a = m.atoms[i];
   if (style === 'structural' || a.el !== 'C') return true;
-  return a.charge !== 0 || a.radical > 0 || !m.bonds.some(b => b.a === i || b.b === i);
+  if (a.charge !== 0 || a.radical > 0) return true;
+  const mine = m.bonds.filter(b => b.a === i || b.b === i);
+  if (!mine.some(b => m.atoms[b.a === i ? b.b : b.a].el === 'C')) return true;
+  return mine.filter(b => b.order === 2).length >= 2;
+}
+
+/** Where an atom's charge goes: the corner (upper right first) farthest from its bonds and its written hydrogens. */
+function chargeDirection(m: Molecule, i: number, at: Vec[]): Vec {
+  const taken = m.bonds.filter(b => b.a === i || b.b === i).map(b => unit(sub2(at[b.a === i ? b.b : b.a], at[i])));
+  const h = hSide(m, i, at);
+  if (h) taken.push(h);
+  const corners: Vec[] = [[0.8, -0.6], [-0.8, -0.6], [0.8, 0.6], [-0.8, 0.6]];
+  const clearance = (c: Vec) => Math.min(2, ...taken.map(v => 1 - (v[0] * c[0] + v[1] * c[1])));
+  return corners.reduce((best, c) => (clearance(c) > clearance(best) + 0.05 ? c : best));
 }
 
 /** The symbol sits on the atom, so bonds meet it squarely; its hydrogens go beside it on the side free of bonds (OH on
@@ -54,8 +69,12 @@ function labelProps(m: Molecule, i: number, at: Vec[], size: number, pid: string
   if (side?.[0] === 1) out.push({id: `${pid}-h`, type: 'text', x: x + half, y: base, text, size, align: 'start', weight: 600, style: {fill}});
   else if (side?.[0] === -1) out.push({id: `${pid}-h`, type: 'text', x: x - half, y: base, text, size, align: 'end', weight: 600, style: {fill}});
   else if (side) out.push({id: `${pid}-h`, type: 'text', x, y: base + side[1] * size * 1.05, text, size, align: 'middle', weight: 600, style: {fill}});
-  if (a.charge) out.push({id: `${pid}-q`, type: 'text', x: x + half + size * 0.05, y: y - size * 0.45, text: sup(a.charge).replace('⁺', '+').replace('⁻', '−'),
-    size: Math.round(size * 0.7), align: 'start', weight: 700, style: {fill}});
+  if (a.charge) {
+    // beside the corner of the label that is free: past the hydrogens when they are written on that side
+    const c = chargeDirection(m, i, at), past = side && side[0] === Math.sign(c[0]) && side[1] === 0 ? size * 0.62 * text.length : 0;
+    out.push({id: `${pid}-q`, type: 'text', x: x + Math.sign(c[0]) * (half + past + size * 0.05), y: y + Math.sign(c[1]) * size * 0.45,
+      text: sup(a.charge).replace('⁺', '+').replace('⁻', '−'), size: Math.round(size * 0.7), align: c[0] > 0 ? 'start' : 'end', weight: 700, style: {fill}});
+  }
   return out;
 }
 
@@ -139,7 +158,10 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
   }
   for (const [i, a] of m.atoms.entries()) {
     if (shown[i]) props.push(...labelProps(m, i, at, size, `${id}-a${i}`, fill[i]));
-    if (options.pairs && a.pairs) props.push(...pairDots(m, i, at, Math.max(k * 0.36, size * 0.8), k, `${id}-p${i}`, fill[i]));
+    const pairs = options.pairs ? a.pairs : 0;
+    // unpaired electrons are drawn on main-group atoms (Cl•, CH3•); a metal ion's d electrons are not dots
+    const single = VALENCE[a.el] !== undefined ? a.radical : 0;
+    if (pairs || single) props.push(...dots(m, i, at, pairs, single, Math.max(k * 0.36, size * 0.8), k, `${id}-p${i}`, fill[i]));
     if (options.labels && a.cip) {
       const away = freeDirections(m, i, at, 1)[0];
       props.push({id: `${id}-cip${i}`, type: 'text', x: at[i][0] + away[0] * k * 0.5, y: at[i][1] + away[1] * k * 0.5,
@@ -153,8 +175,11 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
 function hSide(m: Molecule, i: number, at: Vec[]): Vec | null {
   if (!m.atoms[i].h) return null;
   const nb = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
+  const sides: Vec[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const free = (v: Vec) => !nb.some(u => (u[0] * v[0] + u[1] * v[1]) > 0.3 * len(u));
-  return ([[1, 0], [-1, 0], [0, 1], [0, -1]] as Vec[]).find(free) ?? [1, 0];
+  // no side quite free (CHCl3): the side whose nearest bond is farthest away
+  const room = (v: Vec) => Math.min(...nb.map(u => 1 - (u[0] * v[0] + u[1] * v[1]) / len(u)));
+  return sides.find(free) ?? sides.reduce((best, v) => (room(v) > room(best) + 1e-6 ? v : best));
 }
 
 /** Directions (screen, unit) into the widest gaps between an atom's bonds, `n` of them. */
@@ -163,7 +188,7 @@ function freeDirections(m: Molecule, i: number, at: Vec[], n: number): Vec[] {
   const taken = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
   const h = written(m, i, 'structural') ? hSide(m, i, at) : null;
   if (h) taken.push(h);
-  if (m.atoms[i].charge) taken.push([0.8, -0.6]);
+  if (m.atoms[i].charge) taken.push(chargeDirection(m, i, at));
   const angles = taken.map(v => Math.atan2(v[1], v[0])).sort((x, y) => x - y);
   if (!angles.length) return Array.from({length: n}, (_, j) => [Math.cos(-Math.PI / 2 + (2 * Math.PI * j) / n), Math.sin(-Math.PI / 2 + (2 * Math.PI * j) / n)] as Vec);
   // split each gap between neighbouring bonds by how many items it takes, the widest gaps first
@@ -175,11 +200,13 @@ function freeDirections(m: Molecule, i: number, at: Vec[], n: number): Vec[] {
   }));
 }
 
-function pairDots(m: Molecule, i: number, at: Vec[], reach: number, k: number, pid: string, fill: string): Prop[] {
-  return freeDirections(m, i, at, m.atoms[i].pairs).flatMap((d, j) => {
+/** Lone pairs as pairs of dots and unpaired electrons as single dots (always drawn: Cl• is not Cl), in the free gaps. */
+function dots(m: Molecule, i: number, at: Vec[], pairs: number, single: number, reach: number, k: number, pid: string, fill: string): Prop[] {
+  const r = Math.max(3, k * 0.035);
+  return freeDirections(m, i, at, pairs + single).flatMap((d, j) => {
     const c = add(at[i], mul(d, reach)), side = mul(perp(d), k * 0.07);
-    return [add(c, side), sub2(c, side)].map((p, s) => ({id: `${pid}-${j}-${s}`, type: 'circle', x: p[0], y: p[1], r: Math.max(3, k * 0.035),
-      style: {fill}}));
+    const at2 = j < pairs ? [add(c, side), sub2(c, side)] : [c];
+    return at2.map((p, s) => ({id: `${pid}-${j}-${s}`, type: 'circle', x: p[0], y: p[1], r, style: {fill}}));
   });
 }
 

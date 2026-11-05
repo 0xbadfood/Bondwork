@@ -16,7 +16,10 @@ export const VALENCE: Record<string, number> = {H: 1, Li: 1, Na: 1, K: 1, Be: 2,
 const OCTET = new Set(['B', 'C', 'N', 'O', 'F']);
 const SYMBOLS = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar',
   'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr',
-  'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe'];
+  'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce',
+  'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt',
+  'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf',
+  'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og'];
 
 type RdJson = {molecules: {atoms: {z?: number; impHs?: number; chg?: number; nRad?: number}[];
   bonds: {bo?: number; atoms: [number, number]; stereo?: string}[];
@@ -28,7 +31,9 @@ export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): M
   if (!m || !m.is_valid()) { m?.delete(); throw new Error(`not a molecule: ${smiles}`); }
   try {
     if (options.hydrogens) m.add_hs_in_place();
+    // CoordGen first; it leaves a lone atom (H+) at NaN, so then RDKit's own depictor, then the origin
     m.set_new_coords(true);
+    if (/nan/i.test(m.get_molblock())) m.set_new_coords(false);
     const canonical = RD.get_mol(smiles)!, can = canonical.get_smiles(); canonical.delete();
     const json = (JSON.parse(m.get_json()) as RdJson).molecules[0];
     const block = m.get_molblock().split('\n');
@@ -37,7 +42,7 @@ export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): M
     const atoms: Atom[] = json.atoms.map((a, i) => {
       const line = block[4 + i];
       return {el: SYMBOLS[a.z ?? 6], charge: a.chg ?? 0, h: a.impHs ?? 0, pairs: 0, radical: a.nRad ?? 0,
-        at: [Number(line.slice(0, 10)), Number(line.slice(10, 20))]};
+        at: [Number(line.slice(0, 10)) || 0, Number(line.slice(10, 20)) || 0]};
     });
     for (const [i, c] of tags.CIP_atoms) if (/[RS]/.test(c)) atoms[i].cip = c.includes('R') ? 'R' : 'S';
     if (atoms.length !== na) throw new Error('RDKit atom count and molblock disagree');

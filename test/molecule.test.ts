@@ -14,6 +14,13 @@ test('formulas in Hill order, with the charge', () => {
   assert.equal(hill('CH3CH2OH'), 'C2H6O');
   assert.equal(hill('SO4^2-'), 'O4S2-');
   assert.equal(hill('NH4+'), 'H4N+');
+  // every element, not only the light ones (2026-11-05: Ba, Pb and Hg read as undefined)
+  assert.equal(molecule('[Ba+2].[O-]S(=O)(=O)[O-]').formula, 'BaO4S');
+  assert.equal(molecule('[Pb+2].[S-2]').formula, 'PbS');
+  assert.equal(molecule('[Hg+2]').formula, 'Hg2+');
+  assert.equal(molecule('[U]').formula, 'U');
+  // a lone atom has a place (2026-11-05: CoordGen put H+ at NaN and the contact sheet would not draw)
+  for (const s of ['[H+]', '[Cl-]', '[Na+].[Cl-]', 'C', '[Hg+2]']) assert.ok(molecule(s).atoms.every(a => a.at.every(Number.isFinite)), s);
 });
 
 test('lone pairs from the valence electrons left over', () => {
@@ -120,4 +127,18 @@ test('condensed formulas as books print them', () => {
   assert.equal(hill('[Co(NH3)6]Cl3'), 'Cl3CoH18N6');
   assert.equal(hill('CuSO4·5H2O'), 'CuH10O9S');
   assert.equal(hill('CH≡CH'), 'C2H2');
+});
+
+test('skeletal formulas write the carbons a corner cannot show; radicals show their dot; charges keep off bonds', () => {
+  const texts = (s: string) => moleculeProps(molecule(s)).filter(p => p.type === 'text').map(p => p.text);
+  assert.ok(texts('O=C=O').includes('C'), 'O=C=O, not a long O=O');
+  assert.deepEqual(texts('CBr').sort(), ['Br', 'C', 'H₃']);
+  assert.ok(texts('C=C=CC').includes('C'), 'the middle carbon of an allene');
+  assert.ok(!texts('CCCC').includes('C'), 'a chain stays corners');
+  assert.equal(moleculeProps(molecule('[Cl]')).filter(p => p.type === 'circle').length, 1, 'Cl• has its dot');
+  assert.equal(moleculeProps(molecule('[Cu+2].[O-2]')).filter(p => p.type === 'circle').length, 0, 'Cu2+ has no dot');
+  // carbon monoxide: C≡O with C− and O+; neither charge sits on the bond's line
+  const props = moleculeProps(molecule('[C-]#[O+]'), {style: 'skeletal'});
+  const bond = props.find(p => p.type === 'line')!, y = bond.y1 as number;
+  for (const q of props.filter(p => String(p.id).endsWith('-q'))) assert.ok(Math.abs((q.y as number) - y) > 10, `${q.text} sits on the bond`);
 });
