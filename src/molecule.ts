@@ -10,8 +10,9 @@ export type Bond = {a: number; b: number; order: 1 | 2 | 3; stereo?: 'wedge' | '
 export type Molecule = {smiles: string; formula: string; charge: number; atoms: Atom[]; bonds: Bond[]; rings: number[][]};
 
 /** Valence electrons of the main-group elements a school course meets. */
-export const VALENCE: Record<string, number> = {H: 1, Li: 1, Na: 1, K: 1, Be: 2, Mg: 2, Ca: 2, B: 3, Al: 3,
-  C: 4, Si: 4, N: 5, P: 5, O: 6, S: 6, F: 7, Cl: 7, Br: 7, I: 7, He: 2, Ne: 8, Ar: 8, Kr: 8, Xe: 8, Rn: 8};
+export const VALENCE: Record<string, number> = {H: 1, D: 1, T: 1, Li: 1, Na: 1, K: 1, Be: 2, Mg: 2, Ca: 2, B: 3,
+  Al: 3, C: 4, Si: 4, Ge: 4, Sn: 4, N: 5, P: 5, As: 5, Sb: 5, O: 6, S: 6, Se: 6, Te: 6, F: 7, Cl: 7, Br: 7, I: 7,
+  He: 2, Ne: 8, Ar: 8, Kr: 8, Xe: 8, Rn: 8};
 /** Period-2 atoms never hold more than eight electrons. */
 const OCTET = new Set(['B', 'C', 'N', 'O', 'F']);
 const SYMBOLS = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar',
@@ -21,34 +22,58 @@ const SYMBOLS = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na',
   'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf',
   'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og'];
 
-type RdJson = {molecules: {atoms: {z?: number; impHs?: number; chg?: number; nRad?: number}[];
+type RdJson = {molecules: {atoms: {z?: number; impHs?: number; chg?: number; nRad?: number; isotope?: number}[];
   bonds: {bo?: number; atoms: [number, number]; stereo?: string}[];
   extensions?: {name: string; cipCodes?: [number, string][]}[]}[]};
 
-/** Noble gases whose compounds RDKit's valence table leaves out (KrF2): read without its valence check. */
-const UNLISTED = /\[(Kr|Rn)[^\]]*\]/;
+/** p-block atoms from period 3 down may hold more than eight electrons (ClF3, BrF5, IF7, KrF2): RDKit's valence
+ * table refuses many of them, so they are checked by electron count instead. */
+const EXPANDS = new Set(['Al', 'Si', 'P', 'S', 'Cl', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Rn']);
+const ATOM_TOKEN = /\[[^\]]+\]|Cl|Br|[BCNOSPFI]|[bcnosp]|\*/g;
 
+/** RDKit's molecule, and the atoms that expand their octet when RDKit's valence table had to be set aside. When it
+ * is, every other atom is still checked by RDKit (the expanding ones stand in as `*`) and each expanding one by
+ * electron count: its bonds, hydrogens and charge may not need more valence electrons than it has. */
 function parse(smiles: string) {
-  return RD.get_mol(smiles) ?? (UNLISTED.test(smiles) ? RD.get_mol(smiles, JSON.stringify({sanitize: false})) : null);
+  const checked = RD.get_mol(smiles);
+  if (checked) return {m: checked, expanded: new Set<number>()};
+  const element = (token: string) => token.startsWith('[') ? token.match(/^\[\d*([A-Z][a-z]?)/)?.[1] : token;
+  if (!(smiles.match(ATOM_TOKEN) ?? []).some(t => EXPANDS.has(element(t) ?? ''))) return null;
+  const rest = RD.get_mol(smiles.replace(ATOM_TOKEN, t => EXPANDS.has(element(t) ?? '') ? '[*]' : t));
+  rest?.delete();
+  const raw = rest ? RD.get_mol(smiles, JSON.stringify({sanitize: false})) : null;
+  if (!raw) return null;
+  const json = (JSON.parse(raw.get_json()) as RdJson).molecules[0];
+  const expanded = new Set<number>();
+  for (const [i, a] of json.atoms.entries()) {
+    const el = SYMBOLS[a.z ?? 6];
+    if (!EXPANDS.has(el)) continue;
+    const bonded = json.bonds.reduce((s, b) => s + (b.atoms.includes(i) ? b.bo ?? 1 : 0), 0);
+    if (VALENCE[el] - (a.chg ?? 0) - bonded - (a.impHs ?? 0) < 0) { raw.delete(); return null; }
+    expanded.add(i);
+  }
+  return {m: raw, expanded};
 }
 
 /** A molecule from SMILES; `hydrogens` makes every H an atom of its own (full structural formulas). */
 export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): Molecule {
-  const m = parse(smiles);
+  const parsed = parse(smiles), m = parsed?.m;
   if (!m || !m.is_valid()) { m?.delete(); throw new Error(`not a molecule: ${smiles}`); }
   try {
     if (options.hydrogens) m.add_hs_in_place();
     // CoordGen first; it leaves a lone atom (H+) at NaN, so then RDKit's own depictor, then the origin
     m.set_new_coords(true);
     if (/nan/i.test(m.get_molblock())) m.set_new_coords(false);
-    const canonical = parse(smiles)!, can = canonical.get_smiles(); canonical.delete();
+    const canonical = parse(smiles)!.m, can = canonical.get_smiles(); canonical.delete();
     const json = (JSON.parse(m.get_json()) as RdJson).molecules[0];
     const block = m.get_molblock().split('\n');
     const [na, nb] = [Number(block[3].slice(0, 3)), Number(block[3].slice(3, 6))];
     const tags = JSON.parse(m.get_stereo_tags()) as {CIP_atoms: [number, string][]; CIP_bonds: [number, number, string][]};
     const atoms: Atom[] = json.atoms.map((a, i) => {
       const line = block[4 + i];
-      return {el: SYMBOLS[a.z ?? 6], charge: a.chg ?? 0, h: a.impHs ?? 0, pairs: 0, radical: a.nRad ?? 0,
+      // deuterium and tritium are written D and T, as books write them (D2O, ND3)
+      const el = a.z === 1 && a.isotope === 2 ? 'D' : a.z === 1 && a.isotope === 3 ? 'T' : SYMBOLS[a.z ?? 6];
+      return {el, charge: a.chg ?? 0, h: a.impHs ?? 0, pairs: 0, radical: a.nRad ?? 0,
         at: [Number(line.slice(0, 10)) || 0, Number(line.slice(10, 20)) || 0]};
     });
     for (const [i, c] of tags.CIP_atoms) if (/[RS]/.test(c)) atoms[i].cip = c.includes('R') ? 'R' : 'S';
@@ -67,7 +92,11 @@ export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): M
       const bond = bonds.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
       if (bond && /[EZ]/.test(c)) bond.cip = c.includes('E') ? 'E' : 'Z';
     }
-    for (const [i, atom] of atoms.entries()) atom.pairs = lonePairs(atom, bondSum(bonds, i));
+    for (const [i, atom] of atoms.entries()) {
+      // an expanded atom read without RDKit's valence table has its odd electron (ClO2) worked out here
+      if (parsed.expanded.has(i)) atom.radical = (VALENCE[atom.el] - atom.charge - bondSum(bonds, i) - atom.h) % 2;
+      atom.pairs = lonePairs(atom, bondSum(bonds, i));
+    }
     const charge = atoms.reduce((s, a) => s + a.charge, 0);
     return {smiles: can, formula: formula(atoms, charge), charge, atoms, bonds, rings: rings(atoms.length, bonds)};
   } finally { m.delete(); }

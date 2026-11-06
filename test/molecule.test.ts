@@ -64,7 +64,28 @@ test('noble-gas compounds the book names are molecules; other valence errors sti
   assert.equal(kr.atoms.find(a => a.el === 'Kr')!.pairs, 3);
   assert.deepEqual(moleculeErrors(kr, {formula: 'KrF2'}), []);
   assert.equal(molecule('F[Xe](F)(F)F').atoms.find(a => a.el === 'Xe')!.pairs, 2);
-  assert.throws(() => molecule('F[I](F)(F)(F)(F)F'), /not a molecule/);   // IF6 has an odd electron: no such molecule
+});
+
+test('expanded octets by electron count: ClF3, BrF5, IF7 and the ClO2 radical; carbon and overfull atoms refused', () => {
+  // 2026-11-06, Chemical Bonding: RDKit's valence table refuses the interhalogens the book draws
+  const at = (s: string, el: string) => molecule(s).atoms.find(a => a.el === el)!;
+  assert.equal(molecule('FCl(F)F').formula, 'ClF3');
+  assert.equal(at('FCl(F)F', 'Cl').pairs, 2);
+  assert.equal(at('FBr(F)(F)(F)F', 'Br').pairs, 1);
+  assert.equal(at('F[I](F)(F)(F)(F)(F)F', 'I').pairs, 0);
+  assert.deepEqual([at('O=[Cl]=O', 'Cl').radical, at('O=[Cl]=O', 'Cl').pairs], [1, 1]);
+  assert.throws(() => molecule('F[Cl](F)(F)(F)(F)(F)(F)F'), /not a molecule/);   // eight bonds, seven electrons
+  assert.throws(() => molecule('FCl(F)FC(C)(C)(C)C'), /not a molecule/);          // the carbon is still RDKit's
+  assert.throws(() => molecule('[Ne][Ne]'), /not a molecule/);                    // period 2: no expanded octet
+});
+
+test('deuterium and tritium are D and T, as books write them', () => {
+  // 2026-11-06, Hydrogen: D2, HD and ND3 read as H2 and NH3
+  assert.equal(molecule('[2H][2H]').formula, 'D2');
+  assert.equal(molecule('[2H]N([2H])[2H]').formula, 'D3N');
+  assert.deepEqual(moleculeErrors(molecule('[2H]N([2H])[2H]'), {formula: 'ND3'}), []);
+  assert.deepEqual(moleculeErrors(molecule('[2H]O[2H]'), {formula: 'D2O'}), []);
+  assert.equal(molecule('[3H][H]').formula, 'HT');
 });
 
 test('benzene, skeletal: six corners, three inner second lines, no symbols', () => {
