@@ -154,11 +154,22 @@ export function moleculeErrors(m: Molecule, expect: {formula?: string; charge?: 
   return out;
 }
 
+/** Groups and ligands books write by name (PhCOPh, [Co(en)3]3+, [CrCl3(py)3], edta4-), as atoms. */
+const GROUPS: [RegExp, string][] = [[/Ph(?![a-z])/g, 'C6H5'], [/Me(?![a-z])/g, 'CH3'], [/Et(?![a-z])/g, 'C2H5'],
+  [/(?<![A-Za-z])en(?![a-z])/g, 'C2H8N2'], [/(?<![A-Za-z])py(?![a-z])/g, 'C5H5N'], [/(?<![A-Za-z])ox(?![a-z])/g, 'C2O4'],
+  [/(?<![A-Za-z])gly(?![a-z])/g, 'C2H4NO2'], [/(?<![A-Za-z])acac(?![a-z])/g, 'C5H7O2'],
+  [/(?<![A-Za-z])(?:edta|EDTA)(?![a-z])/g, 'C10H12N2O8']];
+
+/** A book formula with its named groups written as atoms, and a trailing position tag (-o, -m, -p) dropped. */
+export function spelledOut(text: string): string {
+  return GROUPS.reduce((t, [pattern, atoms]) => t.replace(pattern, `(${atoms})`), text.trim().replace(/[-\s][omp]$/, ''));
+}
+
 /** Element counts of a condensed formula: groups in brackets with their multiplier, bond marks ignored
  * ((CH3)3C-OH, CH2=CH2, [Co(NH3)6]Cl3, CuSO4·5H2O). */
 function counts(text: string): Record<string, number> {
   const out: Record<string, number> = {};
-  const [main, ...hydrates] = text.replace(/[-=≡–—]/g, '').split(/[·.*]/);
+  const [main, ...hydrates] = spelledOut(text).replace(/[-=≡–—]/g, '').split(/[·.*]/);
   const stack: Record<string, number>[] = [{}];
   for (const m of main.matchAll(/([A-Z][a-z]?)([0-9]*)|([([])|([)\]])([0-9]*)/g)) {
     const [el, open, close, k] = [m[1], m[3], m[4], m[2] || m[5]];

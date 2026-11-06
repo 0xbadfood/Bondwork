@@ -158,6 +158,15 @@ test('condensed formulas as books print them', () => {
   assert.equal(hill('[Co(NH3)6]Cl3'), 'Cl3CoH18N6');
   assert.equal(hill('CuSO4·5H2O'), 'CuH10O9S');
   assert.equal(hill('CH≡CH'), 'C2H2');
+  // 2026-11-06, Coordination Compounds and Aldehydes: groups and ligands by name, dot hydrates, a para tag
+  assert.equal(hill('[Co(en)3]^3+'), 'C6H24CoN63+');
+  assert.equal(hill('[CrCl3(py)3]'), molecule('[Cr+3].[Cl-].[Cl-].[Cl-].c1ccncc1.c1ccncc1.c1ccncc1').formula);
+  assert.equal(hill('PhCOPh'), 'C13H10O');
+  assert.equal(hill('PhMgBr'), 'C6H5BrMg');
+  assert.equal(hill('CuSO4.5H2O'), 'CuH10O9S');
+  assert.equal(hill('OHCC6H4CHO-p'), 'C8H6O2');
+  assert.equal(hill('edta^4-'), 'C10H12N2O84-');
+  assert.equal(hill('Mn'), 'Mn');   // an element is not a group
 });
 
 test('skeletal formulas write the carbons a corner cannot show; radicals show their dot; charges keep off bonds', () => {
