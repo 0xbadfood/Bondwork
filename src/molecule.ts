@@ -11,7 +11,7 @@ export type Molecule = {smiles: string; formula: string; charge: number; atoms: 
 
 /** Valence electrons of the main-group elements a school course meets. */
 export const VALENCE: Record<string, number> = {H: 1, Li: 1, Na: 1, K: 1, Be: 2, Mg: 2, Ca: 2, B: 3, Al: 3,
-  C: 4, Si: 4, N: 5, P: 5, O: 6, S: 6, F: 7, Cl: 7, Br: 7, I: 7, He: 2, Ne: 8, Ar: 8, Xe: 8};
+  C: 4, Si: 4, N: 5, P: 5, O: 6, S: 6, F: 7, Cl: 7, Br: 7, I: 7, He: 2, Ne: 8, Ar: 8, Kr: 8, Xe: 8, Rn: 8};
 /** Period-2 atoms never hold more than eight electrons. */
 const OCTET = new Set(['B', 'C', 'N', 'O', 'F']);
 const SYMBOLS = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar',
@@ -25,16 +25,23 @@ type RdJson = {molecules: {atoms: {z?: number; impHs?: number; chg?: number; nRa
   bonds: {bo?: number; atoms: [number, number]; stereo?: string}[];
   extensions?: {name: string; cipCodes?: [number, string][]}[]}[]};
 
+/** Noble gases whose compounds RDKit's valence table leaves out (KrF2): read without its valence check. */
+const UNLISTED = /\[(Kr|Rn)[^\]]*\]/;
+
+function parse(smiles: string) {
+  return RD.get_mol(smiles) ?? (UNLISTED.test(smiles) ? RD.get_mol(smiles, JSON.stringify({sanitize: false})) : null);
+}
+
 /** A molecule from SMILES; `hydrogens` makes every H an atom of its own (full structural formulas). */
 export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): Molecule {
-  const m = RD.get_mol(smiles);
+  const m = parse(smiles);
   if (!m || !m.is_valid()) { m?.delete(); throw new Error(`not a molecule: ${smiles}`); }
   try {
     if (options.hydrogens) m.add_hs_in_place();
     // CoordGen first; it leaves a lone atom (H+) at NaN, so then RDKit's own depictor, then the origin
     m.set_new_coords(true);
     if (/nan/i.test(m.get_molblock())) m.set_new_coords(false);
-    const canonical = RD.get_mol(smiles)!, can = canonical.get_smiles(); canonical.delete();
+    const canonical = parse(smiles)!, can = canonical.get_smiles(); canonical.delete();
     const json = (JSON.parse(m.get_json()) as RdJson).molecules[0];
     const block = m.get_molblock().split('\n');
     const [na, nb] = [Number(block[3].slice(0, 3)), Number(block[3].slice(3, 6))];

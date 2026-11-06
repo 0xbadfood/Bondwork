@@ -57,6 +57,16 @@ test('guards: a wrong formula or charge is named; a bad SMILES is refused', () =
   assert.throws(() => molecule('C(C)(C)(C)(C)C'), /not a molecule/);   // five bonds on carbon
 });
 
+test('noble-gas compounds the book names are molecules; other valence errors still are not', () => {
+  // 2026-11-06, Chemical Bonding: RDKit's valence table has no bonds for krypton, so KrF2 failed to parse
+  const kr = molecule('F[Kr]F');
+  assert.equal(kr.formula, 'F2Kr');
+  assert.equal(kr.atoms.find(a => a.el === 'Kr')!.pairs, 3);
+  assert.deepEqual(moleculeErrors(kr, {formula: 'KrF2'}), []);
+  assert.equal(molecule('F[Xe](F)(F)F').atoms.find(a => a.el === 'Xe')!.pairs, 2);
+  assert.throws(() => molecule('F[I](F)(F)(F)(F)F'), /not a molecule/);   // IF6 has an odd electron: no such molecule
+});
+
 test('benzene, skeletal: six corners, three inner second lines, no symbols', () => {
   const props = moleculeProps(molecule('c1ccccc1'), {style: 'skeletal'});
   assert.equal(props.filter(p => p.type === 'line' && !String(p.id).endsWith('-2')).length, 6);
