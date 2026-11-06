@@ -98,8 +98,33 @@ export function molecule(smiles: string, options: {hydrogens?: boolean} = {}): M
       atom.pairs = lonePairs(atom, bondSum(bonds, i));
     }
     const charge = atoms.reduce((s, a) => s + a.charge, 0);
+    spreadFragments(atoms, bonds);
     return {smiles: can, formula: formula(atoms, charge), charge, atoms, bonds, rings: rings(atoms.length, bonds)};
   } finally { m.delete(); }
+}
+
+/** Ions and waters of a salt or hydrate (KCl·MgCl2·6H2O) on a grid, a label's room apart, cations first and
+ * waters last as books write them; RDKit packs them a bond apart, so their symbols ran into each other. */
+function spreadFragments(atoms: Atom[], bonds: Bond[], gap = 1.6) {
+  const part = atoms.map((_, i) => i);
+  const find = (i: number): number => part[i] === i ? i : (part[i] = find(part[i]));
+  for (const b of bonds) part[find(b.a)] = find(b.b);
+  const groups = new Map<number, number[]>();
+  for (const i of atoms.keys()) groups.set(find(i), [...(groups.get(find(i)) ?? []), i]);
+  if (groups.size < 2) return;
+  const charge = (g: number[]) => g.reduce((s, i) => s + atoms[i].charge, 0);
+  const rank = (g: number[]) => charge(g) > 0 ? 0 : charge(g) < 0 ? 1 : 2;
+  const frags = [...groups.values()].sort((a, b) => rank(a) - rank(b) || a[0] - b[0]);
+  const boxes = frags.map(g => {
+    const xs = g.map(i => atoms[i].at[0]), ys = g.map(i => atoms[i].at[1]);
+    return [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  });
+  const cols = Math.ceil(Math.sqrt(frags.length));
+  const cw = Math.max(...boxes.map(([x0, x1]) => x1 - x0)) + gap, ch = Math.max(...boxes.map(([, , y0, y1]) => y1 - y0)) + gap;
+  frags.forEach((g, n) => {
+    const [x0, x1, y0, y1] = boxes[n], [cx, cy] = [(n % cols) * cw, -Math.floor(n / cols) * ch];
+    for (const i of g) atoms[i].at = [atoms[i].at[0] - (x0 + x1) / 2 + cx, atoms[i].at[1] - (y0 + y1) / 2 + cy];
+  });
 }
 
 const bondSum = (bonds: Bond[], i: number) => bonds.reduce((s, b) => s + (b.a === i || b.b === i ? b.order : 0), 0);

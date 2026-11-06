@@ -22,6 +22,13 @@ test('a stereo name needs stereo in the SMILES', () => {
   assert.deepEqual(entryErrors(entry({name: 'butane', iupac: 'butane', smiles: 'CCCC'})), [], 'no stereo words, no stereo needed');
 });
 
+test('a molecule is one piece; a salt says it is ionic', () => {
+  // 2026-11-06: ClF3 came as F[Cl+]F.[F-], with the book's formula
+  assert.match(entryErrors(entry({name: 'chlorine trifluoride', formula: 'ClF3', smiles: 'F[Cl+]F.[F-]'}))[0], /one piece/);
+  assert.deepEqual(entryErrors(entry({name: 'chlorine trifluoride', formula: 'ClF3', smiles: 'FCl(F)F'})), []);
+  assert.deepEqual(entryErrors(entry({name: 'sodium chloride', formula: 'NaCl', smiles: '[Na+].[Cl-]', kind: 'ionic'})), []);
+});
+
 test('OPSIN reading the IUPAC name as another structure refuses the entry', () => {
   assert.match(entryErrors(entry({name: 'isobutane', iupac: 'butane', smiles: 'CC(C)C'}), 'CCCC')[0], /is CCCC, not this structure/);
   assert.match(entryErrors(entry({name: 'x', iupac: 'nonsense-ane', smiles: 'C'}), null)[0], /cannot read/);

@@ -24,13 +24,14 @@ mkdirSync(INDEX, {recursive: true});
 const old: Entry[] = existsSync(join(INDEX, 'molecules.json')) ? JSON.parse(readFileSync(join(INDEX, 'molecules.json'), 'utf8')) : [];
 const rejectedPath = join(INDEX, 'rejected.json');
 const rejected: Record<string, {name: string; smiles: string; problems: string[]}[]> = existsSync(rejectedPath) ? JSON.parse(readFileSync(rejectedPath, 'utf8')) : {};
-const admitted: Entry[] = [];
+const admitted: Entry[] = [], rebuilt = new Set<string>();
 for (const file of files) {
   const data = JSON.parse(readFileSync(file, 'utf8')), book = data.chapter ?? basename(dirname(file));
   const entries: Entry[] = (data.molecules as Candidate[]).map(c => ({id: '', name: c.name, aliases: c.aliases ?? [], iupac: c.iupac ?? '',
     formula: c.formula ?? '', smiles: c.smiles, kind: c.kind, sources: [{book, blocks: c.blocks, pages: c.pages ?? []}]}));
   const read = opsin(entries.map(e => e.iupac || e.name));
   rejected[book] = [];
+  rebuilt.add(book);
   entries.forEach((e, i) => {
     const problems = entryErrors(e, read?.[i]);
     if (problems.length) rejected[book].push({name: e.name, smiles: e.smiles, problems});
@@ -38,7 +39,9 @@ for (const file of files) {
   });
   console.log(`${book}: ${entries.length - rejected[book].length} admitted, ${rejected[book].length} rejected${read ? '' : ' (OPSIN not run: no vendor/opsin-cli jar)'}`);
 }
-const index = mergeEntries([...old, ...admitted]);
+// a rebuilt chapter replaces what it gave before, so an entry a stricter guard now refuses leaves the index
+const kept = old.map(e => ({...e, sources: e.sources.filter(s => !rebuilt.has(s.book))})).filter(e => e.sources.length);
+const index = mergeEntries([...kept, ...admitted]);
 writeFileSync(join(INDEX, 'molecules.json'), JSON.stringify(index, null, 1) + '\n');
 writeFileSync(rejectedPath, JSON.stringify(rejected, null, 1) + '\n');
 console.log(`index: ${index.length} entries`);

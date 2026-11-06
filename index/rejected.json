@@ -1,4 +1,201 @@
 {
  "kech2-02": [],
- "kech2-03": []
+ "kech2-03": [],
+ "kech1-01": [
+  {
+   "name": "cisplatin",
+   "smiles": "N.N.Cl[Pt]Cl",
+   "problems": [
+    "the name says which stereoisomer (cis-diamminedichloridoplatinum(II)) but the SMILES leaves it open"
+   ]
+  }
+ ],
+ "kech1-02": [],
+ "kech1-03": [],
+ "kech1-04": [
+  {
+   "name": "chlorine trifluoride",
+   "smiles": "F[Cl+]F.[F-]",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several (F[Cl+]F.[F-]); an ionic compound or complex says so"
+   ]
+  }
+ ],
+ "kech1-05": [],
+ "kech1-06": [
+  {
+   "name": "nickel carbonyl",
+   "smiles": "[O+]#[C-][Ni]([C-]#[O+])([C-]#[O+])[C-]#[O+]",
+   "problems": [
+    "SMILES [O+]#[C-][Ni]([C-]#[O+])([C-]#[O+])[C-]#[O+] is not a molecule"
+   ]
+  }
+ ],
+ "kech2-01": [
+  {
+   "name": "diborane",
+   "smiles": "B.B",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several (B.B); an ionic compound or complex says so"
+   ]
+  },
+  {
+   "name": "diamminesilver(I) ion",
+   "smiles": "N->[Ag+]<-N",
+   "problems": [
+    "SMILES N->[Ag+]<-N is not a molecule"
+   ]
+  }
+ ],
+ "lech1-01": [
+  {
+   "name": "ethanoic acid dimer",
+   "smiles": "CC(=O)O.CC(=O)O",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several (CC(=O)O.CC(=O)O); an ionic compound or complex says so"
+   ]
+  }
+ ],
+ "lech1-02": [
+  {
+   "name": "tetraamminezinc(II) ion",
+   "smiles": "[NH3][Zn+2]([NH3])([NH3])[NH3]",
+   "problems": [
+    "SMILES [NH3][Zn+2]([NH3])([NH3])[NH3] is not a molecule"
+   ]
+  }
+ ],
+ "lech1-03": [
+  {
+   "name": "cane sugar",
+   "smiles": "OCC1OC(CO)(OC2OC(CO)C(O)C(O)C2O)C(O)C1O",
+   "problems": [
+    "the name says which stereoisomer (beta-D-fructofuranosyl alpha-D-glucopyranoside) but the SMILES leaves it open"
+   ]
+  }
+ ],
+ "lech1-04": [
+  {
+   "name": "[Cu(NH3)4]2+",
+   "smiles": "[NH3]->[Cu+2](<-[NH3])(<-[NH3])<-[NH3]",
+   "problems": [
+    "SMILES [NH3]->[Cu+2](<-[NH3])(<-[NH3])<-[NH3] is not a molecule"
+   ]
+  },
+  {
+   "name": "Mn4N",
+   "smiles": "[Mn][N]([Mn])[Mn].[Mn]",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several ([Mn][N]([Mn])[Mn].[Mn]); an ionic compound or complex says so"
+   ]
+  },
+  {
+   "name": "Fe3H",
+   "smiles": "[FeH].[Fe].[Fe]",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several ([FeH].[Fe].[Fe]); an ionic compound or complex says so"
+   ]
+  }
+ ],
+ "lech1-05": [
+  {
+   "name": "d-[Co(en)3]3+",
+   "smiles": "[Co@OH1-3]123([NH2+]CC[NH2+]1)([NH2+]CC[NH2+]2)[NH2+]CC[NH2+]3",
+   "problems": [
+    "the name says which stereoisomer ((+)-tris(ethane-1,2-diamine)cobalt(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "l-[Co(en)3]3+",
+   "smiles": "[Co@OH2-3]123([NH2+]CC[NH2+]1)([NH2+]CC[NH2+]2)[NH2+]CC[NH2+]3",
+   "problems": [
+    "the name says which stereoisomer ((-)-tris(ethane-1,2-diamine)cobalt(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "cis-[CoCl2(en)2]+",
+   "smiles": "Cl[Co@OH1-3](Cl)([NH2+]1)([NH2+]2)([NH2+]CC2)[NH2+]CC1",
+   "problems": [
+    "the name says which stereoisomer (cis-dichloridobis(ethane-1,2-diamine)cobalt(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "trans-[CoCl2(en)2]+",
+   "smiles": "Cl[Co@OH1-3]12([NH2+]CC[NH2+]2)([NH2+]CC[NH2+]1)Cl",
+   "problems": [
+    "the name says which stereoisomer (trans-dichloridobis(ethane-1,2-diamine)cobalt(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "d-cis-[PtCl2(en)2]2+",
+   "smiles": "Cl[Pt@OH1-2](Cl)([NH2+]1)([NH2+]2)([NH2+]CC2)[NH2+]CC1",
+   "problems": [
+    "the name says which stereoisomer ((+)-cis-dichloridobis(ethane-1,2-diamine)platinum(IV)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "l-cis-[PtCl2(en)2]2+",
+   "smiles": "Cl[Pt@OH2-2](Cl)([NH2+]1)([NH2+]2)([NH2+]CC2)[NH2+]CC1",
+   "problems": [
+    "the name says which stereoisomer ((-)-cis-dichloridobis(ethane-1,2-diamine)platinum(IV)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "cis-[CrCl2(ox)2]3-",
+   "smiles": "Cl[Cr@OH1-3](Cl)(O1)(O2)(OC(=O)C2=O)OC(=O)C1=O",
+   "problems": [
+    "the name says which stereoisomer (cis-dichloridodioxalatochromate(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "trans-[CrCl2(ox)2]3-",
+   "smiles": "Cl[Cr@OH1-3]12(OC(=O)C(=O)O2)(OC(=O)C(=O)O1)Cl",
+   "problems": [
+    "the name says which stereoisomer (trans-dichloridodioxalatochromate(III)) but the SMILES leaves it open"
+   ]
+  },
+  {
+   "name": "cis-[CrCl2(en)2]Cl",
+   "smiles": "[Cr+3].[Cl-].[Cl-].NCCN.NCCN.[Cl-]",
+   "problems": [
+    "the name says which stereoisomer (cis-dichloridobis(ethane-1,2-diamine)chromium(III) chloride) but the SMILES leaves it open"
+   ]
+  }
+ ],
+ "lech2-01": [],
+ "lech2-02": [
+  {
+   "name": "diborane",
+   "smiles": "[BH3].[BH3]",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several ([BH3].[BH3]); an ionic compound or complex says so"
+   ]
+  },
+  {
+   "name": "sucrose",
+   "smiles": "OCC1OC(OC2(CO)OC(CO)C(O)C2O)C(O)C(O)C1O",
+   "problems": [
+    "the name says which stereoisomer (beta-D-fructofuranosyl alpha-D-glucopyranoside) but the SMILES leaves it open"
+   ]
+  }
+ ],
+ "lech2-03": [
+  {
+   "name": "diborane",
+   "smiles": "[BH3].[BH3]",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several ([BH3].[BH3]); an ionic compound or complex says so"
+   ]
+  }
+ ],
+ "lech2-04": [
+  {
+   "name": "fluoroboric acid",
+   "smiles": "[H+].F[B-](F)(F)F",
+   "problems": [
+    "a molecule is one piece, but the SMILES is several ([H+].F[B-](F)(F)F); an ionic compound or complex says so"
+   ]
+  }
+ ],
+ "lech2-05": []
 }

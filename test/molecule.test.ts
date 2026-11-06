@@ -112,6 +112,16 @@ test('drawn scenes pass Linkwork\'s checks: nothing off stage, no text on text',
   }
 });
 
+test('a small box shrinks the room for labels too: atom symbols stay apart', () => {
+  // 2026-11-06, a contact-sheet cell: a fixed 160 px margin left open-chain glucose 20 px bonds under 26 px labels
+  const props = moleculeProps(molecule('O=C[C@H](O)[C@@H](O)[C@H](O)[C@H](O)CO'), {box: [0, 0, 420, 270], bond: 60});
+  const texts = props.filter(p => p.type === 'text' && /-a\d+$/.test(p.id)) as {x: number; y: number; size: number}[];   // atom symbols
+  const size = Math.max(...texts.map(t => t.size));
+  let closest = Infinity;
+  for (const [i, a] of texts.entries()) for (const b of texts.slice(i + 1)) closest = Math.min(closest, Math.hypot(a.x - b.x, a.y - b.y));
+  assert.ok(closest >= 1.5 * size, `labels ${closest.toFixed(0)} px apart at ${size} px`);
+});
+
 test('atom colours: CPK by element, each bond half and half, mono and own colours on request', async () => {
   const {atomColour} = await import('../src/index.ts');
   assert.equal(atomColour('O'), '#ff7a6b');
@@ -184,4 +194,29 @@ test('skeletal formulas write the carbons a corner cannot show; radicals show th
   // acetate's O−: the sign goes high, not low on the right where it reads as O_
   const acetate = moleculeProps(molecule('CC(=O)[O-]')), o = acetate.find(p => p.text === 'O' && acetate.some(q => q.id === `${p.id}-q`))!;
   assert.ok((acetate.find(q => q.id === `${o.id}-q`)!.y as number) < (o.y as number), 'charge above the middle of the symbol');
+});
+
+test('a salt or hydrate lays its ions and waters out apart, cations first', () => {
+  // 2026-11-06, Coordination Compounds: carnallite and CuSO4·5H2O drew every ion and water on top of each other
+  const m = molecule('O.O.O.O.O.O.[Cl-].[Cl-].[Cl-].[K+].[Mg+2]');
+  let closest = Infinity;
+  for (const [i, a] of m.atoms.entries()) for (const b of m.atoms.slice(i + 1)) closest = Math.min(closest, Math.hypot(a.at[0] - b.at[0], a.at[1] - b.at[1]));
+  assert.ok(closest >= 1.6, `ions ${closest.toFixed(2)} bond lengths apart`);
+  const top = Math.max(...m.atoms.map(a => a.at[1]));
+  assert.deepEqual(m.atoms.filter(a => a.at[1] === top).sort((a, b) => a.at[0] - b.at[0]).map(a => a.el).slice(0, 2), ['K', 'Mg'], 'cations on the first row');
+  const sulfate = molecule('O.O.O.O.O.O=S(=O)([O-])[O-].[Cu+2]');
+  const s = sulfate.atoms.findIndex(a => a.el === 'S');
+  assert.equal(sulfate.bonds.filter(b => b.a === s || b.b === s).length, 4, 'a fragment keeps its own shape');
+});
+
+test('ring carbons stay corners next to heteroatoms; a lone hydride writes H where books do', () => {
+  // 2026-11-06, Biomolecules: cytosine's C=O carbon and adenine's ring CH were written out as C and HC
+  for (const s of ['Nc1cc[nH]c(=O)n1', 'Nc1ncnc2[nH]cnc12'])
+    assert.ok(!moleculeProps(molecule(s), {style: 'skeletal'}).some(p => p.type === 'text' && p.text === 'C'), s);
+  // HCl, H2O, H2S with H first; NH3 and CH4 after (a lone atom was written ClH)
+  const hLeft = (s: string) => {
+    const props = moleculeProps(molecule(s), {style: 'skeletal'}), atom = props.find(p => p.id === 'm-a0')!, h = props.find(p => p.id === 'm-a0-h')!;
+    return (h.x as number) < (atom.x as number);
+  };
+  assert.deepEqual(['Cl', 'O', 'S', 'N', 'C'].map(hLeft), [true, true, true, false, false]);
 });

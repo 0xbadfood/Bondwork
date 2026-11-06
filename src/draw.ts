@@ -45,6 +45,7 @@ export function written(m: Molecule, i: number, style: 'skeletal' | 'structural'
   const a = m.atoms[i];
   if (style === 'structural' || a.el !== 'C') return true;
   if (a.charge !== 0 || a.radical > 0) return true;
+  if (m.rings.some(r => r.includes(i))) return false;   // a ring corner, whatever its neighbours (cytosine's C=O)
   const mine = m.bonds.filter(b => b.a === i || b.b === i);
   if (!mine.some(b => m.atoms[b.a === i ? b.b : b.a].el === 'C')) return true;
   return mine.filter(b => b.order === 2).length >= 2;
@@ -83,8 +84,10 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
   const style = options.style ?? 'skeletal', id = options.id ?? 'm', [bx, by, bw, bh] = options.box ?? [160, 140, 1000, 800];
   const xs = m.atoms.map(a => a.at[0]), ys = m.atoms.map(a => a.at[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  // RDKit lays bonds out one unit long; fit the box with room for labels, never larger than `bond` px a bond
-  const k = Math.min(options.bond ?? 130, (bw - 160) / Math.max(x1 - x0, 1e-6), (bh - 160) / Math.max(y1 - y0, 1e-6));
+  // RDKit lays bonds out one unit long; fit the box with room for labels, never larger than `bond` px a bond. The
+  // room is in bond lengths (a label reaches about 0.8 of one past its atom), so a small box shrinks it too
+  // (2026-11-06: a fixed 160 px left open-chain glucose 20 px bonds under full-size labels in a 270 px box)
+  const k = Math.min(options.bond ?? 130, bw / (x1 - x0 + 1.6), bh / (y1 - y0 + 1.6));
   const at: Vec[] = m.atoms.map(a => [bx + bw / 2 + (a.at[0] - (x0 + x1) / 2) * k, by + bh / 2 - (a.at[1] - (y0 + y1) / 2) * k]);
   const size = Math.round(Math.max(26, Math.min(48, k * 0.42))), width = Math.max(3, k / 22);
   // a written symbol's box (Cl is wider than O): every bond line stops where it leaves it, so lines running side by
@@ -173,9 +176,14 @@ export function moleculeProps(m: Molecule, options: DrawOptions = {}): Prop[] {
 }
 
 /** Which side of a written atom its hydrogens go: right unless a bond goes right, then left, then below or above. */
+const H_FIRST = new Set(['O', 'S', 'Se', 'Te', 'F', 'Cl', 'Br', 'I']);
+
 function hSide(m: Molecule, i: number, at: Vec[]): Vec | null {
   if (!m.atoms[i].h) return null;
   const nb = m.bonds.filter(b => b.a === i || b.b === i).map(b => sub2(at[b.a === i ? b.b : b.a], at[i]));
+  // a lone hydride is written as books write it: H first for the halogens and chalcogens (HCl, H2O, H2S), after
+  // for the rest (NH3, CH4, PH3)
+  if (!nb.length && H_FIRST.has(m.atoms[i].el)) return [-1, 0];
   const sides: Vec[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const free = (v: Vec) => !nb.some(u => (u[0] * v[0] + u[1] * v[1]) > 0.3 * len(u));
   // no side quite free (CHCl3): the side whose nearest bond is farthest away

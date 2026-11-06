@@ -26,6 +26,9 @@ export function entryErrors(e: Entry, opsin?: string | null): string[] {
   const stereo = m.atoms.some(a => a.cip) || m.bonds.some(b => b.cip);
   const named = [e.iupac, e.name].some(n => STEREO_WORDS.test(n));
   if (named && !stereo) out.push(`the name says which stereoisomer (${e.iupac || e.name}) but the SMILES leaves it open`);
+  // 2026-11-06: ClF3 came as F[Cl+]F.[F-] and diborane as B.B, both with the book's formula
+  if (['molecule', 'radical', 'intermediate'].includes(e.kind) && e.smiles.includes('.'))
+    out.push(`a ${e.kind} is one piece, but the SMILES is several (${e.smiles}); an ionic compound or complex says so`);
   if (opsin === null) out.push(`OPSIN cannot read the IUPAC name "${e.iupac}"`);
   else if (opsin !== undefined) {
     let theirs: string | undefined;
